@@ -194,6 +194,10 @@ class PuzzleMaster {
     }
 
     placeShapeOnGrid(shape) {
+        // Clear old elements and reset styles
+        shape.elements.forEach(el => el.remove());
+        shape.elements = [];
+
         const pattern = shape.pattern;
         const patternHeight = pattern.length;
         const patternWidth = pattern[0].length;
@@ -207,9 +211,12 @@ class PuzzleMaster {
             }
         }
 
-        const middleBlockIndex = Math.floor(blockCoords.length / 2);
+        const minR = Math.min(...blockCoords.map(coord => coord.r));
+        const maxR = Math.max(...blockCoords.map(coord => coord.r));
+        const minC = Math.min(...blockCoords.map(coord => coord.c));
+        const maxC = Math.max(...blockCoords.map(coord => coord.c));
 
-        blockCoords.forEach(({ r, c }, index) => {
+        blockCoords.forEach(({ r, c }) => {
             const gridRow = shape.startRow + r;
             const gridCol = shape.startCol + c;
 
@@ -223,31 +230,22 @@ class PuzzleMaster {
                 'inset 0 -2px 2px rgba(0, 0, 0, 0.15)'
             ];
 
-            // Top border
-            if (r === 0 || pattern[r - 1][c] === 0) {
-                shadows.push('inset 0 2px 0 0 rgba(0, 0, 0, 0.2)');
-            }
-            // Bottom border
-            if (r === patternHeight - 1 || !pattern[r + 1] || pattern[r + 1][c] === 0) {
-                shadows.push('inset 0 -2px 0 0 rgba(0, 0, 0, 0.2)');
-            }
-            // Left border
-            if (c === 0 || pattern[r][c - 1] === 0) {
-                shadows.push('inset 2px 0 0 0 rgba(0, 0, 0, 0.2)');
-            }
-            // Right border
-            if (c === patternWidth - 1 || pattern[r][c + 1] === 0) {
-                shadows.push('inset -2px 0 0 0 rgba(0, 0, 0, 0.2)');
-            }
+            // Add borders to the outside of the shape
+            if (r === 0 || pattern[r - 1][c] === 0) shadows.push('inset 0 2px 0 0 rgba(0, 0, 0, 0.2)');
+            if (r === patternHeight - 1 || !pattern[r + 1] || pattern[r + 1][c] === 0) shadows.push('inset 0 -2px 0 0 rgba(0, 0, 0, 0.2)');
+            if (c === 0 || pattern[r][c - 1] === 0) shadows.push('inset 2px 0 0 0 rgba(0, 0, 0, 0.2)');
+            if (c === patternWidth - 1 || pattern[r][c + 1] === 0) shadows.push('inset -2px 0 0 0 rgba(0, 0, 0, 0.2)');
 
             block.style.boxShadow = shadows.join(', ');
 
+            // Add orientation and arrow classes
             block.classList.add(shape.orientation);
-            if (index === 0) {
-                block.classList.add('shape-start');
-            }
-            if (index === blockCoords.length - 1) {
-                block.classList.add('shape-finish');
+            if (shape.orientation === 'horizontal') {
+                if (c === minC) block.classList.add('shape-start');
+                if (c === maxC) block.classList.add('shape-finish');
+            } else { // vertical
+                if (r === minR) block.classList.add('shape-start');
+                if (r === maxR) block.classList.add('shape-finish');
             }
 
             shape.elements.push(block);
@@ -362,20 +360,10 @@ class PuzzleMaster {
         const originalGridRow = this.originalPosition.startRow;
         const originalGridCol = this.originalPosition.startCol;
         
-        // Determine and lock drag axis on first movement
-        if (!this.dragAxis) {
-            const dRow = Math.abs(desiredGridRow - originalGridRow);
-            const dCol = Math.abs(desiredGridCol - originalGridCol);
-            if (dRow > 0 || dCol > 0) {
-                // Lock to the axis with the most movement
-                this.dragAxis = dCol > dRow ? 'horizontal' : 'vertical';
-            }
-        }
-
-        let targetGridRow = this.draggedShape.lastGridPosition.row;
-        let targetGridCol = this.draggedShape.lastGridPosition.col;
+        let targetGridRow = this.originalPosition.startRow;
+        let targetGridCol = this.originalPosition.startCol;
         
-        if (this.dragAxis === 'horizontal') {
+        if (this.draggedShape.orientation === 'horizontal') {
             targetGridRow = originalGridRow; // Row is fixed
             const dCol = desiredGridCol - originalGridCol;
             const step = dCol > 0 ? 1 : -1;
@@ -387,7 +375,7 @@ class PuzzleMaster {
                     break;
                 }
             }
-        } else if (this.dragAxis === 'vertical') {
+        } else { // 'vertical'
             targetGridCol = originalGridCol; // Col is fixed
             const dRow = desiredGridRow - originalGridRow;
             const step = dRow > 0 ? 1 : -1;
@@ -413,7 +401,7 @@ class PuzzleMaster {
     handleDragEnd(e) {
         if (!this.isDragging || !this.draggedShape) return;
         this.isDragging = false;
-        this.dragAxis = null;
+        // this.dragAxis = null; // No longer needed
         
         this.clearShapePreview();
 
@@ -544,13 +532,22 @@ class PuzzleMaster {
         const endRow = endGate.edge === 'bottom' ? this.gridSize - 1 : 0;
         const endCol = endGate.position;
 
-        // A cell is "walkable" if it is empty. Gate cells are defined as empty.
+        // A cell is "walkable" if it is empty.
         const isWalkable = (row, col) => {
             if (row < 0 || row >= this.gridSize || col < 0 || col >= this.gridSize) {
                 return false;
             }
+            // A gate cell is only walkable if it is also empty.
+            if (grid[row][col].hasGate) {
+                return grid[row][col].isEmpty;
+            }
             return grid[row][col].isEmpty;
         };
+
+        // The starting gate must be empty to begin.
+        if (!grid[startRow][startCol].isEmpty) {
+            return null;
+        }
 
         const queue = [{ row: startRow, col: startCol, path: [{row: startRow, col: startCol}] }];
         const visited = new Set([`${startRow},${startCol}`]);
@@ -559,7 +556,11 @@ class PuzzleMaster {
             const { row, col, path } = queue.shift();
 
             if (row === endRow && col === endCol) {
-                return path; // Success: return the path of empty cells
+                // The final gate cell must also be empty to win.
+                if (grid[row][col].isEmpty) {
+                    return path;
+                }
+                return null;
             }
 
             const neighbors = [[-1, 0], [1, 0], [0, -1], [0, 1]];
@@ -734,40 +735,42 @@ class PuzzleMaster {
             const shape = shapes[i];
             const tempGrid = this.createGridFromShapes(shapes.filter(s => s.id !== shape.id));
 
-            // --- HORIZONTAL MOVEMENT ---
-            // Move left
-            for (let c = shape.startCol - 1; c >= 0; c--) {
-                if (this.canPlaceShapeInGrid(shape.pattern, shape.startRow, c, tempGrid)) {
-                    const newShapes = JSON.parse(JSON.stringify(shapes));
-                    newShapes[i].startCol = c;
-                    allNextStates.push(newShapes);
-                } else { break; }
-            }
-            // Move right
-            for (let c = shape.startCol + 1; c < this.gridSize; c++) {
-                 if (this.canPlaceShapeInGrid(shape.pattern, shape.startRow, c, tempGrid)) {
-                    const newShapes = JSON.parse(JSON.stringify(shapes));
-                    newShapes[i].startCol = c;
-                    allNextStates.push(newShapes);
-                } else { break; }
+            if (shape.orientation === 'horizontal' || shape.orientation === 'single') {
+                // Move left
+                for (let c = shape.startCol - 1; c >= 0; c--) {
+                    if (this.canPlaceShapeInGrid(shape.pattern, shape.startRow, c, tempGrid)) {
+                        const newShapes = JSON.parse(JSON.stringify(shapes));
+                        newShapes[i].startCol = c;
+                        allNextStates.push(newShapes);
+                    } else { break; }
+                }
+                // Move right
+                for (let c = shape.startCol + 1; c < this.gridSize; c++) {
+                     if (this.canPlaceShapeInGrid(shape.pattern, shape.startRow, c, tempGrid)) {
+                        const newShapes = JSON.parse(JSON.stringify(shapes));
+                        newShapes[i].startCol = c;
+                        allNextStates.push(newShapes);
+                    } else { break; }
+                }
             }
             
-            // --- VERTICAL MOVEMENT ---
-            // Move up
-            for (let r = shape.startRow - 1; r >= 0; r--) {
-                if (this.canPlaceShapeInGrid(shape.pattern, r, shape.startCol, tempGrid)) {
-                    const newShapes = JSON.parse(JSON.stringify(shapes));
-                    newShapes[i].startRow = r;
-                    allNextStates.push(newShapes);
-                } else { break; }
-            }
-            // Move down
-            for (let r = shape.startRow + 1; r < this.gridSize; r++) {
-                if (this.canPlaceShapeInGrid(shape.pattern, r, shape.startCol, tempGrid)) {
-                    const newShapes = JSON.parse(JSON.stringify(shapes));
-                    newShapes[i].startRow = r;
-                    allNextStates.push(newShapes);
-                } else { break; }
+            if (shape.orientation === 'vertical' || shape.orientation === 'single') {
+                // Move up
+                for (let r = shape.startRow - 1; r >= 0; r--) {
+                    if (this.canPlaceShapeInGrid(shape.pattern, r, shape.startCol, tempGrid)) {
+                        const newShapes = JSON.parse(JSON.stringify(shapes));
+                        newShapes[i].startRow = r;
+                        allNextStates.push(newShapes);
+                    } else { break; }
+                }
+                // Move down
+                for (let r = shape.startRow + 1; r < this.gridSize; r++) {
+                    if (this.canPlaceShapeInGrid(shape.pattern, r, shape.startCol, tempGrid)) {
+                        const newShapes = JSON.parse(JSON.stringify(shapes));
+                        newShapes[i].startRow = r;
+                        allNextStates.push(newShapes);
+                    } else { break; }
+                }
             }
         }
         return allNextStates;
