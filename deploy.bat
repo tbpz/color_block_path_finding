@@ -30,50 +30,51 @@ pause
 :step3
 echo [OK] Git is configured.
 pause
-echo [DEBUG] Step 3: Committing files...
+echo [DEBUG] Step 3: Committing file changes...
 if not exist ".git" (
     git init
 )
 git add .
-git commit -m "Initial commit" >nul 2>&1
-echo [OK] Files are committed.
+git commit -m "Update project files for deployment" >nul 2>&1
+echo [OK] File changes have been committed.
 pause
 
 :step4
-echo [DEBUG] Step 4: Checking for GitHub CLI (gh)...
+echo [DEBUG] Step 4: Pushing changes to GitHub...
+git push
+if errorlevel 1 (
+    echo [WARN] Could not push to GitHub. This might be okay if repo is already up to date.
+) else (
+    echo [OK] Latest changes pushed to GitHub.
+)
+pause
+
+:step5
+echo [DEBUG] Step 5: Checking for GitHub CLI (gh)...
 where gh >nul 2>&1
 if errorlevel 1 goto gh_not_found
 echo [OK] GitHub CLI is installed.
 pause
-goto step5
+goto step6
 
 :gh_not_found
 echo [ERROR] GitHub CLI (gh) not found. Please install from https://cli.github.com/
 pause
 exit /b 1
 
-:step5
-echo [DEBUG] Step 5: Authenticating with GitHub...
+:step6
+echo [DEBUG] Step 6: Authenticating with GitHub...
 gh auth status >nul 2>&1
-if not errorlevel 1 goto step6
+if not errorlevel 1 goto step7
 echo [INFO] GitHub authentication needed. Browser will open.
 gh auth login --web
 pause
 
-:step6
-echo [DEBUG] Step 6: Setting up GitHub repository...
-set "repoName=color_block_path_finding"
-gh repo view %repoName% >nul 2>&1
-if not errorlevel 1 goto step7
-echo [INFO] Creating new GitHub repository...
-gh repo create %repoName% --public --source=. --push
-goto step7
-
 :step7
-echo [OK] GitHub repository is ready.
+echo [OK] GitHub authentication is ready.
 pause
 
-echo [DEBUG] Step 7: Checking for NPM (Node.js)...
+echo [DEBUG] Step 8: Checking for NPM (Node.js)...
 where npm >nul 2>&1
 if errorlevel 1 goto npm_not_found
 echo [OK] NPM is installed.
@@ -83,15 +84,12 @@ goto vercel_deploy
 :npm_not_found
 echo [WARN] NPM (required for Vercel) not found.
 echo Please install Node.js from https://nodejs.org/
-echo Then try running this script again.
 pause
 goto end_summary
 
 :vercel_deploy
-echo [DEBUG] Step 8: Deploying to Vercel...
+echo [DEBUG] Step 9: Deploying to Vercel...
 echo [INFO] This will use 'npx', a tool that comes with Node.js.
-echo [INFO] It may need to download Vercel CLI, which can take a moment.
-echo [INFO] You may be prompted to log in. A browser window may open.
 npx vercel --prod --yes
 if errorlevel 1 goto vercel_fail_deploy
 echo [OK] Vercel deployment successful!
@@ -110,7 +108,7 @@ for /f "tokens=*" %%i in ('gh api user --jq .login') do set username=%%i
 echo.
 echo Deployment Summary
 echo ====================
-echo GitHub Repository: https://github.com/%username%/%repoName%
+echo GitHub Repository: https://github.com/%username%/color_block_path_finding
 echo Vercel Dashboard: https://vercel.com/dashboard
 echo.
 echo Your game should be live! Check your dashboard for the URL.
