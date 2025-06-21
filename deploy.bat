@@ -2,13 +2,11 @@
 setlocal
 
 echo [DEBUG] Script starting...
-pause
 
 echo [DEBUG] Step 1: Checking for Git...
 where git >nul 2>&1
 if errorlevel 1 goto git_not_found
 echo [OK] Git is installed.
-pause
 goto step2
 
 :git_not_found
@@ -25,11 +23,9 @@ set /p git_name="Enter your name: "
 set /p git_email="Enter your email: "
 git config --global user.name "%git_name%"
 git config --global user.email "%git_email%"
-pause
 
 :step3
 echo [OK] Git is configured.
-pause
 echo [DEBUG] Step 3: Committing file changes...
 if not exist ".git" (
     git init
@@ -37,7 +33,6 @@ if not exist ".git" (
 git add .
 git commit -m "Update project files for deployment" >nul 2>&1
 echo [OK] File changes have been committed.
-pause
 
 :step4
 echo [DEBUG] Step 4: Pushing changes to GitHub...
@@ -47,14 +42,12 @@ if errorlevel 1 (
 ) else (
     echo [OK] Latest changes pushed to GitHub.
 )
-pause
 
 :step5
 echo [DEBUG] Step 5: Checking for GitHub CLI (gh)...
 where gh >nul 2>&1
 if errorlevel 1 goto gh_not_found
 echo [OK] GitHub CLI is installed.
-pause
 goto step6
 
 :gh_not_found
@@ -68,17 +61,14 @@ gh auth status >nul 2>&1
 if not errorlevel 1 goto step7
 echo [INFO] GitHub authentication needed. Browser will open.
 gh auth login --web
-pause
 
 :step7
 echo [OK] GitHub authentication is ready.
-pause
 
 echo [DEBUG] Step 8: Checking for NPM (Node.js)...
 where npm >nul 2>&1
 if errorlevel 1 goto npm_not_found
 echo [OK] NPM is installed.
-pause
 goto vercel_deploy
 
 :npm_not_found
@@ -93,13 +83,11 @@ echo [INFO] This will use 'npx', a tool that comes with Node.js.
 npx vercel --prod --yes
 if errorlevel 1 goto vercel_fail_deploy
 echo [OK] Vercel deployment successful!
-pause
 goto end_summary
 
 :vercel_fail_deploy
 echo [WARN] Vercel deployment failed.
 echo You can deploy manually by importing your repo at https://vercel.com
-pause
 
 :end_summary
 echo.
@@ -112,5 +100,4 @@ echo GitHub Repository: https://github.com/%username%/color_block_path_finding
 echo Vercel Dashboard: https://vercel.com/dashboard
 echo.
 echo Your game should be live! Check your dashboard for the URL.
-pause
 exit /b 0 
