@@ -73,33 +73,28 @@ goto step7
 echo [OK] GitHub repository is ready.
 pause
 
-echo [DEBUG] Step 7: Checking for Vercel CLI...
-where vercel >nul 2>&1
-if not errorlevel 1 goto vercel_install
-echo [OK] Vercel CLI is installed.
+echo [DEBUG] Step 7: Checking for NPM (Node.js)...
+where npm >nul 2>&1
+if errorlevel 1 goto npm_not_found
+echo [OK] NPM is installed.
 pause
 goto vercel_deploy
 
-:vercel_install
-echo [INFO] Vercel CLI not found. Attempting to install...
-npm install -g vercel
-if errorlevel 1 goto vercel_fail
-echo [OK] Vercel CLI installed. Please RE-RUN this script.
-pause
-exit /b 0
-
-:vercel_deploy
-echo [DEBUG] Step 8: Deploying to Vercel...
-echo [INFO] You may be prompted to log in. A browser window may open.
-vercel --prod --yes
-if errorlevel 1 goto vercel_fail_deploy
-echo [OK] Vercel deployment successful!
+:npm_not_found
+echo [WARN] NPM (required for Vercel) not found.
+echo Please install Node.js from https://nodejs.org/
+echo Then try running this script again.
 pause
 goto end_summary
 
-:vercel_fail
-echo [WARN] Could not install Vercel CLI automatically.
-echo You can deploy manually at: https://vercel.com
+:vercel_deploy
+echo [DEBUG] Step 8: Deploying to Vercel...
+echo [INFO] This will use 'npx', a tool that comes with Node.js.
+echo [INFO] It may need to download Vercel CLI, which can take a moment.
+echo [INFO] You may be prompted to log in. A browser window may open.
+npx vercel --prod --yes
+if errorlevel 1 goto vercel_fail_deploy
+echo [OK] Vercel deployment successful!
 pause
 goto end_summary
 
