@@ -33,24 +33,38 @@ class PuzzleMaster {
     
     async generateAndCheckBoard() {
         this.generationOverlay.classList.add('show');
-        let isSolvable = false;
+        let boardIsValid = false;
         let attempts = 0;
         
-        while (!isSolvable && attempts < 50) {
+        while (!boardIsValid && attempts < 100) { // Increased attempts for stricter validation
             attempts++;
             console.log(`Generation attempt: ${attempts}`);
+            
             this.setupNewBoard();
-            isSolvable = this.isSolvable();
-            if (!isSolvable) {
-                console.log(`Attempt #${attempts} was NOT solvable.`);
+            
+            // Check 1: Is it already won?
+            const isAlreadyWon = !!this.checkPathExists();
+            if (isAlreadyWon) {
+                console.log(`Attempt #${attempts} was already solved. Regenerating.`);
+                continue; // Board is invalid, try again.
             }
+
+            // Check 2: Is it solvable?
+            const isSolvable = this.isSolvable();
+            if (!isSolvable) {
+                console.log(`Attempt #${attempts} was NOT solvable. Regenerating.`);
+                continue; // Board is invalid, try again.
+            }
+
+            // If we get here, the board is valid!
+            boardIsValid = true;
         }
 
-        if (!isSolvable) {
-            console.error("Failed to generate a solvable puzzle after multiple attempts.");
-            alert("Could not generate a solvable puzzle. Please refresh the page to try again.");
+        if (!boardIsValid) {
+            console.error("Failed to generate a valid puzzle after multiple attempts.");
+            alert("Could not generate a solvable, non-winning puzzle. Please refresh the page to try again.");
         } else {
-            console.log("Successfully generated a solvable board!");
+            console.log(`Successfully generated a valid board in ${attempts} attempts!`);
         }
 
         this.generationOverlay.classList.remove('show');
@@ -69,7 +83,6 @@ class PuzzleMaster {
         this.createGrid();
         this.createGates();
         this.createRandomShapes();
-        this.ensureNoInitialWin();
         
         this.setupButtons();
         this.setupDragAndDrop();
@@ -608,36 +621,6 @@ class PuzzleMaster {
         document.querySelectorAll('.grid-cell.path-highlight').forEach(el => {
             el.classList.remove('path-highlight');
         });
-    }
-
-    ensureNoInitialWin() {
-        let winningPath = this.checkPathExists();
-        if (winningPath) {
-            // Path exists, we need to block it.
-            // Find an empty cell in the path that is not a gate.
-            const blockerCell = winningPath.find(cell => {
-                const isGate = this.gates.some(g => {
-                    const gateRow = g.edge === 'top' ? 0 : this.gridSize - 1;
-                    return cell.row === gateRow && cell.col === g.position;
-                });
-                return !isGate;
-            });
-
-            if (blockerCell) {
-                // Place a single 1x1 shape to block the path.
-                const shape = {
-                    id: 'blocker_shape',
-                    pattern: [[1]],
-                    orientation: 'single',
-                    startRow: blockerCell.row,
-                    startCol: blockerCell.col,
-                    color: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'][Math.floor(Math.random() * 6)],
-                    elements: []
-                };
-                this.shapes.push(shape);
-                this.placeShapeOnGrid(shape);
-            }
-        }
     }
 
     updateUI() {

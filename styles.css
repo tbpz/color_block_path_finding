@@ -56,6 +56,15 @@ h1 {
     margin-bottom: 8px;
 }
 
+.instructions {
+    font-size: 1rem;
+    color: #6b7280; /* A slightly muted text color */
+    margin-bottom: 20px;
+    max-width: 350px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
 /* Header */
 .game-header {
     margin-bottom: 20px;
