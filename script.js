@@ -1,9 +1,9 @@
 // Puzzle Master - Pathfinding Game
 class PuzzleMaster {
-    constructor() {
+    init() {
         this.gridSize = 8;
         this.gameBoard = document.getElementById('gameBoard');
-        this.congratulationOverlay = document.getElementById('congratulationOverlay');
+        this.gameContainer = this.gameBoard.closest('.game-container');
         
         const rootStyle = getComputedStyle(document.documentElement);
         const boardStyle = getComputedStyle(this.gameBoard);
@@ -16,6 +16,7 @@ class PuzzleMaster {
         this.gates = [];
         this.moveCount = 0;
         this.previewElements = [];
+        this.winningPath = [];
         
         this.isDragging = false;
         this.draggedShape = null;
@@ -25,29 +26,67 @@ class PuzzleMaster {
         this.numShapes = 10;
         this.shapeDefinitions = this.defineAllShapes();
         
-        this.init();
-        this.setupButtons();
-        this.updateUI();
+        this.generationOverlay = document.getElementById('generationOverlay');
+        
+        this.generateAndCheckBoard();
     }
     
-    init() {
+    async generateAndCheckBoard() {
+        this.generationOverlay.classList.add('show');
+        let isSolvable = false;
+        let attempts = 0;
+        
+        while (!isSolvable && attempts < 50) {
+            attempts++;
+            console.log(`Generation attempt: ${attempts}`);
+            this.setupNewBoard();
+            isSolvable = this.isSolvable();
+            if (!isSolvable) {
+                console.log(`Attempt #${attempts} was NOT solvable.`);
+            }
+        }
+
+        if (!isSolvable) {
+            console.error("Failed to generate a solvable puzzle after multiple attempts.");
+            alert("Could not generate a solvable puzzle. Please refresh the page to try again.");
+        } else {
+            console.log("Successfully generated a solvable board!");
+        }
+
+        this.generationOverlay.classList.remove('show');
+    }
+    
+    setupNewBoard() {
+        this.gameBoard.innerHTML = '';
+        this.grid = [];
+        this.shapes = [];
+        this.gates = [];
+        this.moveCount = 0;
+        this.winningPath = [];
+        this.pathConnected = false;
+        this.isDragging = false;
+        
         this.createGrid();
         this.createGates();
         this.createRandomShapes();
+        this.ensureNoInitialWin();
+        
+        this.setupButtons();
         this.setupDragAndDrop();
         this.checkPathConnection();
+        this.updateUI();
     }
     
     setupButtons() {
         const resetBtn = document.getElementById('resetBtn');
-        const replayBtn = document.getElementById('replayBtn');
-        
-        resetBtn.addEventListener('click', () => this.restartGame());
-        replayBtn.addEventListener('click', () => this.restartGame());
+        if (resetBtn) {
+            resetBtn.addEventListener('click', () => this.restartGame());
+        }
     }
     
     restartGame() {
         this.gameBoard.innerHTML = '';
+        this.clearWinningPathHighlight();
         this.grid = [];
         this.shapes = [];
         this.gates = [];
@@ -55,8 +94,8 @@ class PuzzleMaster {
         this.isDragging = false;
         this.draggedShape = null;
         this.pathConnected = false;
-        this.congratulationOverlay.classList.remove('show');
-        this.init();
+        this.winningPath = [];
+        this.generateAndCheckBoard();
         this.updateUI();
     }
     
@@ -155,35 +194,62 @@ class PuzzleMaster {
     }
 
     placeShapeOnGrid(shape) {
-        // Clear old elements and reset styles
-        shape.elements.forEach(el => el.remove());
-        shape.elements = [];
-
-        const shapeBlocks = [];
-        for (let r = 0; r < shape.pattern.length; r++) {
-            for (let c = 0; c < shape.pattern[r].length; c++) {
-                if (shape.pattern[r][c] === 1) {
-                    shapeBlocks.push({ r, c });
+        const pattern = shape.pattern;
+        const patternHeight = pattern.length;
+        const patternWidth = pattern[0].length;
+        
+        const blockCoords = [];
+        for (let r = 0; r < patternHeight; r++) {
+            for (let c = 0; c < patternWidth; c++) {
+                if (pattern[r][c] === 1) {
+                    blockCoords.push({ r, c });
                 }
             }
         }
 
-        shapeBlocks.forEach((blockInfo, i) => {
-            const gridRow = shape.startRow + blockInfo.r;
-            const gridCol = shape.startCol + blockInfo.c;
+        const middleBlockIndex = Math.floor(blockCoords.length / 2);
+
+        blockCoords.forEach(({ r, c }, index) => {
+            const gridRow = shape.startRow + r;
+            const gridCol = shape.startCol + c;
+
             this.grid[gridRow][gridCol].isEmpty = false;
             this.grid[gridRow][gridCol].shapeId = shape.id;
+            
             const block = this.createShapeBlock(shape, gridRow, gridCol);
             
-            block.classList.add(shape.orientation);
+            const shadows = [
+                'inset 0 2px 2px rgba(255, 255, 255, 0.3)',
+                'inset 0 -2px 2px rgba(0, 0, 0, 0.15)'
+            ];
 
-            if (i === 0) {
-                block.classList.add('shape-start', 'show-indicator');
+            // Top border
+            if (r === 0 || pattern[r - 1][c] === 0) {
+                shadows.push('inset 0 2px 0 0 rgba(0, 0, 0, 0.2)');
             }
-            if (i === shapeBlocks.length - 1) {
-                block.classList.add('shape-finish', 'show-indicator');
+            // Bottom border
+            if (r === patternHeight - 1 || !pattern[r + 1] || pattern[r + 1][c] === 0) {
+                shadows.push('inset 0 -2px 0 0 rgba(0, 0, 0, 0.2)');
             }
-            
+            // Left border
+            if (c === 0 || pattern[r][c - 1] === 0) {
+                shadows.push('inset 2px 0 0 0 rgba(0, 0, 0, 0.2)');
+            }
+            // Right border
+            if (c === patternWidth - 1 || pattern[r][c + 1] === 0) {
+                shadows.push('inset -2px 0 0 0 rgba(0, 0, 0, 0.2)');
+            }
+
+            block.style.boxShadow = shadows.join(', ');
+
+            block.classList.add(shape.orientation);
+            if (index === 0) {
+                block.classList.add('shape-start');
+            }
+            if (index === blockCoords.length - 1) {
+                block.classList.add('shape-finish');
+            }
+
             shape.elements.push(block);
             this.gameBoard.appendChild(block);
         });
@@ -213,14 +279,39 @@ class PuzzleMaster {
     }
 
     setupDragAndDrop() {
-        this.gameBoard.addEventListener('mousedown', this.handleMouseDown.bind(this));
-        document.addEventListener('mousemove', this.handleMouseMove.bind(this));
-        document.addEventListener('mouseup', this.handleMouseUp.bind(this));
+        // Mouse Events
+        this.gameBoard.addEventListener('mousedown', this.handleDragStart.bind(this));
+        document.addEventListener('mousemove', this.handleDragMove.bind(this));
+        document.addEventListener('mouseup', this.handleDragEnd.bind(this));
+
+        // Touch Events
+        this.gameBoard.addEventListener('touchstart', this.handleDragStart.bind(this), { passive: false });
+        document.addEventListener('touchmove', this.handleDragMove.bind(this), { passive: false });
+        document.addEventListener('touchend', this.handleDragEnd.bind(this));
     }
 
-    handleMouseDown(e) {
+    getEventPosition(e) {
+        // Handles both mouse and touch events to get coordinates.
+        let touch;
+        if (e.type.startsWith('touch')) {
+            touch = e.touches[0] || e.changedTouches[0];
+        }
+        return {
+            x: touch ? touch.clientX : e.clientX,
+            y: touch ? touch.clientY : e.clientY
+        };
+    }
+
+    handleDragStart(e) {
+        if (this.pathConnected) return; // Lock board on win
+
         const blockElement = e.target.closest('.shape-block');
         if (!blockElement) return;
+
+        // Prevent default browser actions, like scrolling, on touch devices.
+        if (e.type.startsWith('touch')) {
+            e.preventDefault();
+        }
         
         const shapeId = blockElement.dataset.shapeId;
         const shape = this.shapes.find(s => s.id === shapeId);
@@ -229,107 +320,126 @@ class PuzzleMaster {
         this.isDragging = true;
         this.draggedShape = shape;
         this.originalPosition = { startRow: shape.startRow, startCol: shape.startCol };
+        this.draggedShape.lastGridPosition = { row: shape.startRow, col: shape.startCol };
+        this.dragAxis = null; // To lock movement axis after first move
 
-        // Determine offset of the cursor within the shape's overall bounding box
         const boardRect = this.gameBoard.getBoundingClientRect();
         const firstBlockRect = shape.elements[0].getBoundingClientRect();
         const shapePixelLeft = firstBlockRect.left - boardRect.left;
         const shapePixelTop = firstBlockRect.top - boardRect.top;
-
+        const eventPos = this.getEventPosition(e);
+        
         this.dragOffset = {
-            x: e.clientX - boardRect.left - shapePixelLeft,
-            y: e.clientY - boardRect.top - shapePixelTop
+            x: eventPos.x - boardRect.left - shapePixelLeft,
+            y: eventPos.y - boardRect.top - shapePixelTop
         };
-
-        this.draggedShape.lastPixelPosition = { x: shapePixelLeft, y: shapePixelTop };
-
-        this.removeShapeFromGrid(shape); // Remove from data grid
+        
+        this.removeShapeFromGrid(shape);
 
         shape.elements.forEach(el => {
             el.style.zIndex = 1000;
             el.style.transition = 'none';
-            el.style.opacity = '0.7';
-            el.style.pointerEvents = 'none';
         });
     }
 
-    handleMouseMove(e) {
-        if (!this.isDragging) return;
+    handleDragMove(e) {
+        if (!this.isDragging || !this.draggedShape) return;
         
+        if (e.type.startsWith('touch')) {
+            e.preventDefault();
+        }
+
         const boardRect = this.gameBoard.getBoundingClientRect();
-        const mouseX = e.clientX - boardRect.left;
-        const mouseY = e.clientY - boardRect.top;
-
-        const desiredX = mouseX - this.dragOffset.x;
-        const desiredY = mouseY - this.dragOffset.y;
+        const eventPos = this.getEventPosition(e);
+        const mouseX = eventPos.x - boardRect.left;
+        const mouseY = eventPos.y - boardRect.top;
         
-        const startX = this.draggedShape.lastPixelPosition.x;
-        const startY = this.draggedShape.lastPixelPosition.y;
+        const desiredPixelX = mouseX - this.dragOffset.x;
+        const desiredPixelY = mouseY - this.dragOffset.y;
 
-        let lastValidX = startX;
-        let lastValidY = startY;
+        const { row: desiredGridRow, col: desiredGridCol } = this.pixelToGridPosition(desiredPixelX, desiredPixelY);
 
-        const stepSize = this.cellSize / 4;
-
-        if (this.draggedShape.orientation === 'horizontal') {
-            const dx = desiredX - startX;
-            const distance = Math.abs(dx);
-            const numSteps = Math.max(1, Math.ceil(distance / stepSize));
-            
-            for (let i = 1; i <= numSteps; i++) {
-                const intermediateX = startX + (dx * i) / numSteps;
-                const gridPos = this.pixelToGridPosition(intermediateX, startY);
-                if (this.canPlaceShape(this.draggedShape.pattern, gridPos.row, gridPos.col)) {
-                    lastValidX = intermediateX;
-                } else {
-                    break; // Collision
-                }
-            }
-        } else { // 'vertical'
-            const dy = desiredY - startY;
-            const distance = Math.abs(dy);
-            const numSteps = Math.max(1, Math.ceil(distance / stepSize));
-
-            for (let i = 1; i <= numSteps; i++) {
-                const intermediateY = startY + (dy * i) / numSteps;
-                const gridPos = this.pixelToGridPosition(startX, intermediateY);
-                if (this.canPlaceShape(this.draggedShape.pattern, gridPos.row, gridPos.col)) {
-                    lastValidY = intermediateY;
-                } else {
-                    break; // Collision
-                }
+        const originalGridRow = this.originalPosition.startRow;
+        const originalGridCol = this.originalPosition.startCol;
+        
+        // Determine and lock drag axis on first movement
+        if (!this.dragAxis) {
+            const dRow = Math.abs(desiredGridRow - originalGridRow);
+            const dCol = Math.abs(desiredGridCol - originalGridCol);
+            if (dRow > 0 || dCol > 0) {
+                // Lock to the axis with the most movement
+                this.dragAxis = dCol > dRow ? 'horizontal' : 'vertical';
             }
         }
 
-        this.draggedShape.lastPixelPosition = { x: lastValidX, y: lastValidY };
-
-        this.updateShapePixelPosition(lastValidX, lastValidY);
-        this.updateShapePreview(lastValidX, lastValidY);
+        let targetGridRow = this.draggedShape.lastGridPosition.row;
+        let targetGridCol = this.draggedShape.lastGridPosition.col;
+        
+        if (this.dragAxis === 'horizontal') {
+            targetGridRow = originalGridRow; // Row is fixed
+            const dCol = desiredGridCol - originalGridCol;
+            const step = dCol > 0 ? 1 : -1;
+            
+            for (let c = originalGridCol + step; (step > 0 ? c <= desiredGridCol : c >= desiredGridCol); c += step) {
+                if (this.canPlaceShape(this.draggedShape.pattern, targetGridRow, c)) {
+                    targetGridCol = c;
+                } else {
+                    break;
+                }
+            }
+        } else if (this.dragAxis === 'vertical') {
+            targetGridCol = originalGridCol; // Col is fixed
+            const dRow = desiredGridRow - originalGridRow;
+            const step = dRow > 0 ? 1 : -1;
+            
+            for (let r = originalGridRow + step; (step > 0 ? r <= desiredGridRow : r >= desiredGridRow); r += step) {
+                if (this.canPlaceShape(this.draggedShape.pattern, r, targetGridCol)) {
+                    targetGridRow = r;
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        this.draggedShape.lastGridPosition = { row: targetGridRow, col: targetGridCol };
+        
+        const finalPixelX = targetGridCol * (this.cellSize + this.gap) + this.boardPadding;
+        const finalPixelY = targetGridRow * (this.cellSize + this.gap) + this.boardPadding;
+        
+        this.updateShapePixelPosition(finalPixelX, finalPixelY);
+        this.updateShapePreview(finalPixelX, finalPixelY);
     }
 
-    handleMouseUp(e) {
-        if (!this.isDragging) return;
+    handleDragEnd(e) {
+        if (!this.isDragging || !this.draggedShape) return;
         this.isDragging = false;
-
+        this.dragAxis = null;
+        
         this.clearShapePreview();
 
-        const finalPixelX = this.draggedShape.lastPixelPosition.x;
-        const finalPixelY = this.draggedShape.lastPixelPosition.y;
+        const finalGridPos = this.draggedShape.lastGridPosition || this.originalPosition;
 
-        const gridPos = this.pixelToGridPosition(finalPixelX, finalPixelY);
-        
-        if (this.canPlaceShape(this.draggedShape.pattern, gridPos.row, gridPos.col)) {
-            this.draggedShape.startRow = gridPos.row;
-            this.draggedShape.startCol = gridPos.col;
+        if (this.canPlaceShape(this.draggedShape.pattern, finalGridPos.row, finalGridPos.col)) {
+            this.draggedShape.startRow = finalGridPos.row;
+            this.draggedShape.startCol = finalGridPos.col;
+            if(finalGridPos.row !== this.originalPosition.startRow || finalGridPos.col !== this.originalPosition.startCol) {
+                this.moveCount++;
+            }
         } else {
             this.draggedShape.startRow = this.originalPosition.startRow;
             this.draggedShape.startCol = this.originalPosition.startCol;
         }
-        
+
         this.placeShapeOnGrid(this.draggedShape);
-        this.checkPathConnection();
-        
+
+        this.draggedShape.elements.forEach(el => {
+            el.style.zIndex = 100;
+            el.style.transition = '';
+        });
+
         this.draggedShape = null;
+        this.checkPathConnection();
+        this.updateUI();
     }
     
     updateShapePixelPosition(x, y) {
@@ -408,77 +518,281 @@ class PuzzleMaster {
     }
 
     getBlockPatternOffset(shape, elementIndex) {
-        if (!shape || !shape.pattern) return null;
+        const { r: firstR, c: firstC } = this.getFirstBlockPatternOffset(shape);
         let currentIndex = 0;
         for (let r = 0; r < shape.pattern.length; r++) {
             for (let c = 0; c < shape.pattern[r].length; c++) {
                 if (shape.pattern[r][c] === 1) {
                     if (currentIndex === elementIndex) {
-                        return { r, c };
+                        return { r: r - firstR, c: c - firstC };
                     }
                     currentIndex++;
                 }
             }
         }
-        return { r: 0, c: 0 }; // Fallback
+        return { r: 0, c: 0 };
     }
 
-    checkPathExists() {
+    checkPathExists(grid = this.grid) {
         const startGate = this.gates.find(g => g.type === 'start');
         const endGate = this.gates.find(g => g.type === 'end');
-        if (!startGate || !endGate) return false;
-        
-        const startNode = { row: 0, col: startGate.position };
-        const endNode = { row: this.gridSize - 1, col: endGate.position };
 
-        const queue = [startNode];
-        const visited = new Set([`${startNode.row},${startNode.col}`]);
+        if (!startGate || !endGate) return null;
+
+        const startRow = startGate.edge === 'top' ? 0 : this.gridSize - 1;
+        const startCol = startGate.position;
+        const endRow = endGate.edge === 'bottom' ? this.gridSize - 1 : 0;
+        const endCol = endGate.position;
+
+        // A cell is "walkable" if it is empty. Gate cells are defined as empty.
+        const isWalkable = (row, col) => {
+            if (row < 0 || row >= this.gridSize || col < 0 || col >= this.gridSize) {
+                return false;
+            }
+            return grid[row][col].isEmpty;
+        };
+
+        const queue = [{ row: startRow, col: startCol, path: [{row: startRow, col: startCol}] }];
+        const visited = new Set([`${startRow},${startCol}`]);
 
         while (queue.length > 0) {
-            const { row, col } = queue.shift();
-            if (row === endNode.row && col === endNode.col) {
-                this.pathConnected = true;
+            const { row, col, path } = queue.shift();
+
+            if (row === endRow && col === endCol) {
+                return path; // Success: return the path of empty cells
+            }
+
+            const neighbors = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+            for (const [dr, dc] of neighbors) {
+                const newRow = row + dr;
+                const newCol = col + dc;
+                const key = `${newRow},${newCol}`;
+
+                if (isWalkable(newRow, newCol) && !visited.has(key)) {
+                    visited.add(key);
+                    const newPath = [...path, {row: newRow, col: newCol}];
+                    queue.push({ row: newRow, col: newCol, path: newPath });
+                }
+            }
+        }
+        return null; // No path found
+    }
+
+    checkPathConnection() {
+        const foundPath = this.checkPathExists();
+        const pathIsNowConnected = !!foundPath;
+
+        if (pathIsNowConnected && !this.pathConnected) {
+            this.pathConnected = true;
+            this.winningPath = foundPath;
+            this.highlightWinningPath();
+        } else if (!pathIsNowConnected && this.pathConnected) {
+            this.pathConnected = false;
+            this.winningPath = [];
+            this.clearWinningPathHighlight();
+        }
+        
+        this.updateUI();
+    }
+
+    highlightWinningPath() {
+        this.gameContainer.classList.add('game-won');
+        this.winningPath.forEach(cellPos => {
+            this.grid[cellPos.row][cellPos.col].element.classList.add('path-highlight');
+        });
+    }
+
+    clearWinningPathHighlight() {
+        this.gameContainer.classList.remove('game-won');
+        document.querySelectorAll('.grid-cell.path-highlight').forEach(el => {
+            el.classList.remove('path-highlight');
+        });
+    }
+
+    ensureNoInitialWin() {
+        let winningPath = this.checkPathExists();
+        if (winningPath) {
+            // Path exists, we need to block it.
+            // Find an empty cell in the path that is not a gate.
+            const blockerCell = winningPath.find(cell => {
+                const isGate = this.gates.some(g => {
+                    const gateRow = g.edge === 'top' ? 0 : this.gridSize - 1;
+                    return cell.row === gateRow && cell.col === g.position;
+                });
+                return !isGate;
+            });
+
+            if (blockerCell) {
+                // Place a single 1x1 shape to block the path.
+                const shape = {
+                    id: 'blocker_shape',
+                    pattern: [[1]],
+                    orientation: 'single',
+                    startRow: blockerCell.row,
+                    startCol: blockerCell.col,
+                    color: ['red', 'green', 'blue', 'yellow', 'purple', 'orange'][Math.floor(Math.random() * 6)],
+                    elements: []
+                };
+                this.shapes.push(shape);
+                this.placeShapeOnGrid(shape);
+            }
+        }
+    }
+
+    updateUI() {
+        const pathStatusEl = document.getElementById('pathStatus');
+        const winMessageEl = document.getElementById('winMessage');
+
+        if (this.pathConnected) {
+            pathStatusEl.style.opacity = '0';
+            winMessageEl.style.opacity = '1';
+            winMessageEl.style.transform = 'translateY(0)';
+        } else {
+            pathStatusEl.style.opacity = '1';
+            winMessageEl.style.opacity = '0';
+            winMessageEl.style.transform = 'translateY(10px)';
+        }
+    }
+
+    isSolvable() {
+        const initialShapes = JSON.parse(JSON.stringify(this.shapes));
+        const queue = [initialShapes];
+        const visited = new Set([this.getShapesState(initialShapes)]);
+        
+        let iterations = 0;
+        const maxIterations = 8000;
+
+        while (queue.length > 0) {
+            iterations++;
+            if (iterations > maxIterations) {
+                console.warn(`Solvability check timed out after ${maxIterations} iterations.`);
+                return false;
+            }
+
+            const currentShapes = queue.shift();
+            const currentGrid = this.createGridFromShapes(currentShapes);
+            
+            if (this.checkPathExists(currentGrid)) {
+                console.log(`SOLVABLE: Path found after ${iterations} iterations.`);
                 return true;
             }
             
-            [[0, 1], [0, -1], [1, 0], [-1, 0]].forEach(([dr, dc]) => {
-                const newRow = row + dr;
-                const newCol = col + dc;
-                if (this.grid[newRow]?.[newCol]?.isEmpty && !visited.has(`${newRow},${newCol}`)) {
-                    visited.add(`${newRow},${newCol}`);
-                    queue.push({ row: newRow, col: newCol });
+            const nextShapeStates = this.getAllPossibleNextShapeStates(currentShapes, currentGrid);
+            
+            for (const nextShapes of nextShapeStates) {
+                const stateString = this.getShapesState(nextShapes);
+                if (!visited.has(stateString)) {
+                    visited.add(stateString);
+                    queue.push(nextShapes);
                 }
-            });
+            }
         }
-        this.pathConnected = false;
+        console.log(`NOT SOLVABLE: Explored ${visited.size} states and found no solution.`);
         return false;
     }
-    
-    checkPathConnection() {
-        if (this.checkPathExists()) {
-            this.pathConnected = true;
-            this.showCongratulations();
-        } else {
-            this.pathConnected = false;
-        }
-        this.updateUI();
-    }
-    
-    showCongratulations() {
-        this.congratulationOverlay.classList.add('show');
+
+    getShapesState(shapes) {
+        return shapes.sort((a, b) => a.id.localeCompare(b.id))
+                     .map(s => `${s.id}:${s.startRow},${s.startCol}`)
+                     .join('|');
     }
 
-    // updateUI and other helpers
-    updateUI() {
-        const pathStatusEl = document.getElementById('pathStatus');
-        if (this.pathConnected) {
-            pathStatusEl.textContent = 'Connected';
-            pathStatusEl.className = 'status-connected';
-        } else {
-            pathStatusEl.textContent = 'Disconnected';
-            pathStatusEl.className = 'status-disconnected';
+    createGridFromShapes(shapes) {
+        const grid = [];
+        for (let row = 0; row < this.gridSize; row++) {
+            grid[row] = [];
+            for (let col = 0; col < this.gridSize; col++) {
+                grid[row][col] = { isEmpty: true, shapeId: null };
+            }
         }
+        for (const shape of shapes) {
+            for (let r = 0; r < shape.pattern.length; r++) {
+                for (let c = 0; c < shape.pattern[r].length; c++) {
+                    if (shape.pattern[r][c] === 1) {
+                        const gridRow = shape.startRow + r;
+                        const gridCol = shape.startCol + c;
+                        if(grid[gridRow] && grid[gridRow][gridCol]){
+                           grid[gridRow][gridCol].isEmpty = false;
+                           grid[gridRow][gridCol].shapeId = shape.id;
+                        }
+                    }
+                }
+            }
+        }
+        this.gates.forEach(gate => {
+            const gateRow = gate.edge === 'top' ? 0 : this.gridSize - 1;
+            if (grid[gateRow] && grid[gateRow][gate.position]) {
+                grid[gateRow][gate.position].isEmpty = true;
+            }
+        });
+        return grid;
+    }
+
+    getAllPossibleNextShapeStates(shapes, grid) {
+        const allNextStates = [];
+        for (let i = 0; i < shapes.length; i++) {
+            const shape = shapes[i];
+            const tempGrid = this.createGridFromShapes(shapes.filter(s => s.id !== shape.id));
+
+            // --- HORIZONTAL MOVEMENT ---
+            // Move left
+            for (let c = shape.startCol - 1; c >= 0; c--) {
+                if (this.canPlaceShapeInGrid(shape.pattern, shape.startRow, c, tempGrid)) {
+                    const newShapes = JSON.parse(JSON.stringify(shapes));
+                    newShapes[i].startCol = c;
+                    allNextStates.push(newShapes);
+                } else { break; }
+            }
+            // Move right
+            for (let c = shape.startCol + 1; c < this.gridSize; c++) {
+                 if (this.canPlaceShapeInGrid(shape.pattern, shape.startRow, c, tempGrid)) {
+                    const newShapes = JSON.parse(JSON.stringify(shapes));
+                    newShapes[i].startCol = c;
+                    allNextStates.push(newShapes);
+                } else { break; }
+            }
+            
+            // --- VERTICAL MOVEMENT ---
+            // Move up
+            for (let r = shape.startRow - 1; r >= 0; r--) {
+                if (this.canPlaceShapeInGrid(shape.pattern, r, shape.startCol, tempGrid)) {
+                    const newShapes = JSON.parse(JSON.stringify(shapes));
+                    newShapes[i].startRow = r;
+                    allNextStates.push(newShapes);
+                } else { break; }
+            }
+            // Move down
+            for (let r = shape.startRow + 1; r < this.gridSize; r++) {
+                if (this.canPlaceShapeInGrid(shape.pattern, r, shape.startCol, tempGrid)) {
+                    const newShapes = JSON.parse(JSON.stringify(shapes));
+                    newShapes[i].startRow = r;
+                    allNextStates.push(newShapes);
+                } else { break; }
+            }
+        }
+        return allNextStates;
+    }
+    
+    canPlaceShapeInGrid(pattern, startRow, startCol, grid) {
+        for (let r = 0; r < pattern.length; r++) {
+            for (let c = 0; c < pattern[r].length; c++) {
+                if (pattern[r][c] === 1) {
+                    const gridRow = startRow + r;
+                    const gridCol = startCol + c;
+                    if (gridRow < 0 || gridRow >= this.gridSize || gridCol < 0 || gridCol >= this.gridSize) {
+                        return false;
+                    }
+                    if (!grid[gridRow][gridCol].isEmpty) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => new PuzzleMaster());
+document.addEventListener('DOMContentLoaded', () => {
+    const game = new PuzzleMaster();
+    game.init();
+});
